@@ -9,6 +9,7 @@ import os
 import sys
 import humanize
 from functools import partial
+from datetime import datetime
 
 
 ThreadInfo = namedtuple('ThreadInfo', ['id', 'board'])
@@ -102,6 +103,19 @@ def build_download_path(info, dest, no_create_thread_folder):
     return dest
 
 
+def format_timedelta(td):
+    """Format a timedelta ito HH:MM:SS
+
+    Source: http://stackoverflow.com/a/13409708/2720026
+    """
+    s = td.seconds
+    return '{:02}:{:02}:{:02}'.format(
+        s // 3600,
+        s % 3600 // 60,
+        s % 60,
+    )
+
+
 def main():
     """Program entry point."""
     # Unbuffer stdout so progress is indicated responsively.
@@ -157,7 +171,9 @@ def main():
     # FIXME: Use a queue instead of starting all downloads at once!
     r = asyncio.gather(*L)
 
+    t = datetime.now()
     loop.run_until_complete(r)
+    diff = datetime.now() - t
 
     print()  # Print newline after the 'progress periods'.
-    print('Finished downloading images.')
+    print('Finished downloading images in {}.'.format(format_timedelta(diff)))
