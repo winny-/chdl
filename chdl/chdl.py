@@ -8,19 +8,23 @@ from os import path
 import os
 import sys
 import humanize
+from functools import partial
 
 
 ThreadInfo = namedtuple('ThreadInfo', ['id', 'board'])
 
 
 class Unbuffered(object):
-   def __init__(self, stream):
-       self.stream = stream
-   def write(self, data):
-       self.stream.write(data)
-       self.stream.flush()
-   def __getattr__(self, attr):
-       return getattr(self.stream, attr)
+    """Create a wrapped file-like object that is unbuffered."""
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, data):
+        self.stream.write(data)
+        self.stream.flush()
+
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
 
 
 def get_thread_info(url):
@@ -39,7 +43,13 @@ async def get_json(url):
     return await r.json()
 
 
-async def download_file(url, dest):
+async def download_file(url, dest, progress=None):
+    """Download a file
+
+    url      -- the HTTP/HTTPS URL.
+    dest     -- the path to save the data to.
+    progress -- a callback to invoke once the file is downloaded
+    """
     async with aiohttp.get(url) as r:
         with open(dest, 'wb') as f:
             while True:
@@ -47,7 +57,8 @@ async def download_file(url, dest):
                 if not chunk:
                     break
                 f.write(chunk)
-    print('.', end='')
+    if progress is not None:
+        progress()
 
 
 def make_parser():
@@ -93,7 +104,9 @@ def build_download_path(info, dest, no_create_thread_folder):
 
 def main():
     """Program entry point."""
+    # Unbuffer stdout so progress is indicated responsively.
     sys.stdout = Unbuffered(sys.stdout)
+
     parser = make_parser()
     args = parser.parse_args()
 
@@ -101,14 +114,17 @@ def main():
     dest = build_download_path(info,
                                args.dest,
                                args.no_create_thread_folder)
+
     loop = asyncio.get_event_loop()
 
     print('Getting thread information... ', end='')
-    j = loop.run_until_complete(get_json('https://a.4cdn.org/{0}/thread/{1}.json'.format(info.board, info.id)))
+    cor = get_json('https://a.4cdn.org/{0}/thread/{1}.json'.format(info.board,
+                                                                   info.id))
+    j = loop.run_until_complete(cor)
     print('Ok.')
 
-    posts = j['posts']
-    image_posts = [p for p in posts if 'filename' in p and 'filedeleted' not in p]
+    image_posts = [p for p in j['posts']
+                   if 'filename' in p and 'filedeleted' not in p]
 
     if not image_posts:
         print('No images in thread. Exiting.')
@@ -118,7 +134,7 @@ def main():
 
     print('{} images to download, {} total.'.format(
         len(image_posts),
-        humanize.naturalsize(size, binary=True)
+        humanize.naturalsize(size, binary=True),
     ))
 
     os.makedirs(dest, mode=0o755, exist_ok=True)
@@ -126,16 +142,22 @@ def main():
         print('No write access to "{}". Exiting.'.format(dest))
         return
 
-    print('Downloading to "{}"'.format(dest))    
+    print('Downloading to "{}"'.format(dest))
 
-    r = asyncio.gather(*[
-        download_file(
-            'https://i.4cdn.org/{0}/{1}{2}'.format(info.board, p['tim'], p['ext']),
-            path.join(dest, '{0}{1}'.format(p['tim'], p['ext'])),
-        )
-        for p in image_posts
-    ])
+    L = []
+    for p in image_posts:
+        filename = '{}{}'.format(p['tim'], p['ext'])
+        url = 'https://i.4cdn.org/{}/{}'.format(info.board, filename)
+        L.append(download_file(
+            url,
+            path.join(dest, filename),
+            progress=partial(print, '.', end=''),
+        ))
+
+    # FIXME: Use a queue instead of starting all downloads at once!
+    r = asyncio.gather(*L)
+
     loop.run_until_complete(r)
-    print()
+
+    print()  # Print newline after the 'progress periods'.
     print('Finished downloading images.')
-    
