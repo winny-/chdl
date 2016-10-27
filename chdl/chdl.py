@@ -78,6 +78,12 @@ def make_parser():
         help='Do not create a thread folder in --dest or cwd.',
         action='store_true',
     )
+    parser.add_argument(
+        '--use-original-filename',
+        '-u',
+        help='Use the original filename instead of the renamed filename.',
+        action='store_true',
+    )
     return parser
 
 
@@ -162,9 +168,12 @@ def main():
     for p in image_posts:
         filename = '{}{}'.format(p['tim'], p['ext'])
         url = 'https://i.4cdn.org/{}/{}'.format(info.board, filename)
+        local_filename = filename
+        if args.use_original_filename:
+            local_filename = '{}{}'.format(p['filename'], p['ext'])
         L.append(download_file(
             url,
-            path.join(dest, filename),
+            path.join(dest, local_filename),
             progress=partial(print, '.', end=''),
         ))
 
