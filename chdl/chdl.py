@@ -31,7 +31,7 @@ class Unbuffered(object):
 def get_thread_info(url):
     """Get the 4chan thread info from an URL."""
     parts = urlparse(url)
-    if parts.hostname != 'boards.4chan.org':
+    if parts.hostname not in  ('boards.4chan.org', 'boards.4channel.org'):
         raise RuntimeError('Invalid url')
     m = re.match(r'^/(\w+)/thread/(\d+)', parts.path.lower())
     if m is None:
